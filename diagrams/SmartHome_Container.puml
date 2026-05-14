@@ -1,0 +1,135 @@
+@startuml
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+HIDE_STEREOTYPE()
+
+title Container diagram — "Кинобездна" (To-Be Target)
+
+' === Клиенты ===
+Person(userWeb, "Пользователь Web", "Использует сайт")
+Person(userMobile, "Пользователь Mobile", "Использует приложение")
+Person(userTV, "Пользователь Smart TV", "Использует ТВ-приложение")
+
+' === Внешние системы ===
+System_Ext(recoSys, "Рекомендательная система", "Сторонний сервис подбора контента")
+System_Ext(paymentGw, "Платёжный шлюз", "Внешняя платёжная система")
+System_Ext(extCinemas, "Внешние онлайн-кинотеатры", "Источники контента для агрегации")
+
+System_Boundary(cinema, "Кинобездна") {
+
+    ' === Клиентские приложения ===
+    Container(webApp, "Web App", "React / JS", "UI для браузера")
+    Container(mobileApp, "Mobile App", "iOS / Android", "Нативное приложение")
+    Container(tvApp, "TV App", "Smart TV SDK", "Приложение для Smart TV")
+
+    ' === Edge ===
+    Container(apiGw, "API Gateway", "Nginx / Envoy", "Единая точка входа: роутинг, rate limit, auth")
+
+    ' === BFF ===
+    Container_Boundary(bff, "BFF") {
+        Container(webBff, "Web BFF", "Go", "BFF для веба")
+        Container(mobileBff, "Mobile BFF", "Go", "BFF для мобильных")
+        Container(tvBff, "TV BFF", "Go", "BFF для ТВ")
+    }
+
+    Container_Boundary(b_user, "User") {
+        Container(userSvc, "User Service", "Go", "Профили, избранное, папки")
+        ContainerDb(pgUser, "PostgreSQL", "users, favorites")
+        Rel(userSvc, pgUser, "SQL")
+    }
+
+    Container_Boundary(b_metadata, "Metadata") {
+        Container(metadata, "Metadata Service", "Go", "Жанры, актёры, описания, средний рейтинг")
+        ContainerDb(pgMetadata, "PostgreSQL", "metadata")
+        Rel(metadata, pgMetadata, "SQL")
+    }
+
+    Container_Boundary(b_video, "Video") {
+        Container(video, "Video Service", "Go", "Каталог видео, стриминг собственного контента")
+        ContainerDb(pgVideo, "PostgreSQL", "video catalog")
+        ContainerDb(s3, "S3", "Видеоконтент (медиафайлы)")
+        Rel(video, pgVideo, "SQL")
+        Rel(video, s3, "Чтение/запись медиафайлов", "S3 API")
+    }
+
+    Container_Boundary(b_payment, "Payment") {
+         Container(payment, "Payment Service", "Go", "Платежи, интеграция со шлюзом")
+         ContainerDb(pgPayment, "PostgreSQL", "payments")
+         Rel(payment, pgPayment, "SQL")
+    }
+
+    Container_Boundary(b_discount, "Discount") {
+         Container(discount, "Discount Service", "Go", "Скидки, промокоды, лояльность")
+         ContainerDb(pgDiscount, "PostgreSQL", "discounts")
+         Rel(discount, pgDiscount, "SQL")
+    }
+
+    Container_Boundary(b_rating, "Rating") {
+         Container(rating, "Rating Service", "Go", "Пользовательские оценки и отзывы")
+         ContainerDb(pgRating, "PostgreSQL", "ratings")
+         Rel(rating, pgRating, "SQL")
+    }
+
+    Container_Boundary(b_subscription, "Subscription") {
+        Container(subscription, "Subscription Service", "Go", "Подписки, статусы, сроки")
+        ContainerDb(pgSubscription, "PostgreSQL", "subscriptions")
+        Rel(subscription, pgSubscription, "SQL")
+    }
+
+    Container_Boundary(b_recommendation, "Recommendation") {
+        Container(recommendation, "Recommendation Service", "Go", "Сервис рекомендаций")
+        ContainerDb(pgRecommendation, "PostgreSQL", "recommendation")
+        Rel(recommendation, pgRecommendation, "SQL")
+    }
+
+    ' === Микросервисы ===
+    Container(auth, "Auth Service", "Go / Keycloak", "Аутентификация и авторизация")
+    Container(contentAgg, "Content Aggregation Service", "Go", "Интеграция с внешними кинотеатрами")
+
+    ' === Шина ===
+    Container(broker, "Kafka", "", "Шина событий")
+}
+
+' === Клиенты → приложения ===
+Rel(userWeb, webApp, "Использует", "HTTPS")
+Rel(userMobile, mobileApp, "Использует", "HTTPS")
+Rel(userTV, tvApp, "Использует", "HTTPS")
+Rel(webApp, apiGw, "REST", "HTTPS")
+Rel(mobileApp, apiGw, "REST", "HTTPS")
+Rel(tvApp, apiGw, "REST", "HTTPS")
+
+' === Gateway → BFF ===
+Rel(apiGw, webBff, "Web-запросы", "REST")
+Rel(apiGw, mobileBff, "Mobile-запросы", "REST")
+Rel(apiGw, tvBff, "TV-запросы", "REST")
+Rel(apiGw, auth, "Авторизация", "REST")
+
+' === BFF → микросервисы ===
+Rel(bff, userSvc, "Информация о пользователе", "REST")
+Rel(bff, metadata, "Метаданные по фильму", "REST")
+Rel(bff, rating, "Оценки и отзывы по фильму", "REST")
+Rel(bff, video, "Видеоконтент с S3", "HTTP")
+Rel(bff, contentAgg, "Интеграция с онлайн-кинотеатрами", "HTTP")
+Rel(bff, subscription, "Управление подписками", "REST")
+Rel(bff, discount, "Управление скидками", "REST")
+Rel(bff, payment, "Управление платежами", "REST")
+Rel(bff, recommendation, "Запрос рекомендаций", "REST")
+
+' === Связи между сервисами ===
+Rel(subscription, payment, "Оплата подписки", "REST")
+
+Rel(rating, broker, "publish user.events\n(пользователь поставил оценку и отзыв)")
+Rel(video, broker, "publish user.events\n(пользователь посмотрел видео)")
+Rel(broker, recommendation, "читает пользовательские действия из user.events")
+Rel(payment, broker, "publish payment.events (оплата прошла успешно)")
+Rel(broker, subscription, "consume payment.events\n")
+
+' === Внешние интеграции ===
+Rel(payment, paymentGw, "Проведение платежей", "HTTPS")
+Rel(contentAgg, extCinemas, "Получение контента и метаданных", "HTTPS / REST")
+
+Rel(recommendation, recoSys, "Интеграция с рекомендательной системой", "RabbitMQ")
+Rel(recoSys, recommendation, "Интеграция с рекомендательной системой", "RabbitMQ")
+
+@enduml
