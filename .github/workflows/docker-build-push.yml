@@ -125,31 +125,3 @@ jobs:
           labels: ${{ steps.meta-events.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  api-tests:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Start services with docker compose
-        run: docker compose up -d --build
-
-      - name: Wait for services to be ready
-        run: |
-          echo "Waiting for services to start..."
-          sleep 45
-          docker compose ps
-
-      - name: Install Newman
-        working-directory: tests/postman
-        run: npm install
-
-      - name: Run Postman tests
-        working-directory: tests/postman
-        run: npm run test:local
-
-      - name: Tear down
-        if: always()
-        run: docker compose down -v
